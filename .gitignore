@@ -1,0 +1,6 @@
+.env
+keys/private.pem
+keys/public.pem
+logs/audit.log
+keys/GmailAppSecret.md
+keys/.DS_Store

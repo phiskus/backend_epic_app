@@ -1,0 +1,13 @@
+services:
+  lab-reporter:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      # Mount RSA keys read-only — never baked into the image
+      - ./keys:/app/keys:ro
+      # Persist audit log to host
+      - ./logs:/app/logs
+    restart: unless-stopped
