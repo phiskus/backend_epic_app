@@ -11,11 +11,13 @@ import (
 // Config holds all runtime configuration loaded from the environment.
 type Config struct {
 	// Epic SMART Backend Services
-	EpicClientID      string
-	EpicFHIRBase      string
-	EpicTokenURL      string
+	EpicClientID       string
+	EpicFHIRBase       string
+	EpicTokenURL       string
 	EpicPrivateKeyPath string
 	EpicPublicKeyPath  string
+	EpicJWKSURL        string // publicly reachable URL Epic will fetch for JWKS
+	EpicGroupID        string // FHIR Group ID defining the patient population
 
 	// HTTP server (JWKS endpoint)
 	Port string
@@ -39,11 +41,13 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		EpicClientID:      os.Getenv("EPIC_CLIENT_ID"),
-		EpicFHIRBase:      os.Getenv("EPIC_FHIR_BASE"),
-		EpicTokenURL:      os.Getenv("EPIC_TOKEN_URL"),
+		EpicClientID:       os.Getenv("EPIC_CLIENT_ID"),
+		EpicFHIRBase:       os.Getenv("EPIC_FHIR_BASE"),
+		EpicTokenURL:       os.Getenv("EPIC_TOKEN_URL"),
 		EpicPrivateKeyPath: os.Getenv("EPIC_PRIVATE_KEY_PATH"),
 		EpicPublicKeyPath:  os.Getenv("EPIC_PUBLIC_KEY_PATH"),
+		EpicJWKSURL:        os.Getenv("EPIC_JWKS_URL"),
+		EpicGroupID:        os.Getenv("EPIC_GROUP_ID"),
 		Port:              getEnvOrDefault("PORT", "8080"),
 		SMTPHost:          os.Getenv("SMTP_HOST"),
 		SMTPPort:          getEnvOrDefault("SMTP_PORT", "587"),
@@ -66,11 +70,13 @@ func Load() (*Config, error) {
 
 	// Validate required fields — fail loudly rather than silently misbehave
 	required := map[string]string{
-		"EPIC_CLIENT_ID":       cfg.EpicClientID,
-		"EPIC_FHIR_BASE":       cfg.EpicFHIRBase,
-		"EPIC_TOKEN_URL":       cfg.EpicTokenURL,
+		"EPIC_CLIENT_ID":        cfg.EpicClientID,
+		"EPIC_FHIR_BASE":        cfg.EpicFHIRBase,
+		"EPIC_TOKEN_URL":        cfg.EpicTokenURL,
 		"EPIC_PRIVATE_KEY_PATH": cfg.EpicPrivateKeyPath,
 		"EPIC_PUBLIC_KEY_PATH":  cfg.EpicPublicKeyPath,
+		"EPIC_JWKS_URL":  cfg.EpicJWKSURL,
+		"EPIC_GROUP_ID": cfg.EpicGroupID,
 		"SMTP_HOST":            cfg.SMTPHost,
 		"SMTP_USER":            cfg.SMTPUser,
 		"SMTP_PASS":            cfg.SMTPPass,
