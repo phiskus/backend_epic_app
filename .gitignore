@@ -2,5 +2,6 @@
 keys/private.pem
 keys/public.pem
 logs/audit.log
-keys/GmailAppSecret.md
+keys/GmailAppSecret_KID.md
+
 keys/.DS_Store
