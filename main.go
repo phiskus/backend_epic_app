@@ -1,15 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"epic_lab_reporter/auth"
 	"epic_lab_reporter/config"
-	"epic_lab_reporter/fhir"
 	"epic_lab_reporter/jwks"
+	"epic_lab_reporter/scheduler"
 )
 
 func main() {
@@ -17,16 +16,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("config error: %v", err)
 	}
-	fmt.Println("Config loaded ✓")
+	log.Println("config loaded ✓")
 
-	// Start JWKS HTTP server first so Epic can reach it
+	// Start the JWKS HTTP server so Epic can verify JWT signatures.
+	// Must be running before the first token request.
 	jwksHandler, err := jwks.Handler(cfg.EpicPublicKeyPath)
 	if err != nil {
 		log.Fatalf("jwks handler: %v", err)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/jwks.json", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("JWKS HIT: %s %s — User-Agent: %s", r.Method, r.URL.String(), r.Header.Get("User-Agent"))
+		log.Printf("JWKS request: %s %s — %s", r.Method, r.URL.String(), r.Header.Get("User-Agent"))
 		jwksHandler(w, r)
 	})
 	go func() {
@@ -35,32 +35,19 @@ func main() {
 		}
 	}()
 	time.Sleep(200 * time.Millisecond)
-	fmt.Printf("JWKS server listening on :%s ✓\n", cfg.Port)
+	log.Printf("JWKS server listening on :%s ✓", cfg.Port)
 
-	// DEBUG: print JWT assertion for curl testing
-	privKey, _ := auth.LoadPrivateKey(cfg.EpicPrivateKeyPath)
-	pubKey, _ := auth.LoadPublicKey(cfg.EpicPublicKeyPath)
-	kid, _ := auth.DeriveKID(pubKey)
-	assertion, _ := auth.BuildAssertion(cfg, privKey, kid)
-	fmt.Printf("JWT:\n%s\n\n", assertion)
-
-	// Token client
+	// Token client — shared across all FHIR calls, handles caching + refresh.
 	tokenClient := auth.NewTokenClient(cfg)
-	token, err := tokenClient.GetToken()
-	if err != nil {
-		log.Printf("WARNING: get token failed: %v", err)
-		log.Println("JWKS server still running — update Epic portal URL then retry.")
-		select {} // block forever so tunnel stays alive
-	}
-	fmt.Printf("Access token ✓  %.20s...\n", token)
 
-	// Step 5: fetch patients
-	patients, err := fhir.FetchPatients(cfg, tokenClient)
-	if err != nil {
-		log.Fatalf("fetch patients: %v", err)
+	// Warm up: verify we can get a token before entering the scheduler loop.
+	if _, err := tokenClient.GetToken(); err != nil {
+		log.Fatalf("initial token fetch failed: %v\n"+
+			"Check EPIC_JWKS_URL is publicly reachable and matches the Epic portal registration.", err)
 	}
-	fmt.Printf("Patients ✓  found %d\n", len(patients))
-	for _, p := range patients {
-		fmt.Printf("  [%s] %s  MRN:%s\n", p.ID, p.Name, p.MRN)
-	}
+	log.Println("access token ✓")
+
+	// Run the report job now, then every cfg.SchedulerInterval (default 24h).
+	log.Printf("scheduler starting — interval: %s", cfg.SchedulerInterval)
+	scheduler.Run(cfg, tokenClient) // blocks forever
 }

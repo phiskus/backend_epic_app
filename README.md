@@ -6,6 +6,44 @@ No browser. No UI. No user interaction. Pure backend service.
 
 ---
 
+## Quick Start
+
+> Complete one-time setup first (see [One-Time Setup](#one-time-setup)), then:
+
+```bash
+# 1. Clone and enter the project
+git clone git@github.com:phiskus/backend_epic_app.git
+cd backend_epic_app
+
+# 2. Copy config template and fill in your values
+cp .env.example .env
+
+# 3. Generate RSA keypair
+mkdir -p keys
+openssl genrsa -out keys/private.pem 2048
+openssl rsa -in keys/private.pem -pubout -out keys/public.pem
+
+# 4. Forward port 8080 in VS Code → set visibility to Public → copy URL into .env as EPIC_JWKS_URL
+#    Then paste that URL into the Epic portal (Non-Production JWK Set URL) and save.
+
+# 5. Run
+go run .
+```
+
+Expected output:
+```
+Config loaded ✓
+JWKS server listening on :8080 ✓
+2026/03/27 21:48:57 JWKS HIT: GET /.well-known/jwks.json — User-Agent: Epic-Interconnect/117.0...
+Access token ✓  eyJhbGciOiJSUzI1NiIs...
+Bulk export started — polling https://...
+....
+Patients ✓  found 7
+  [abc123] Doe, John  MRN:1234
+```
+
+---
+
 ## How It Works
 
 ```
@@ -39,6 +77,7 @@ Our Service                          Epic Auth Server
     ├─ POST /oauth2/token ──────────────────────────────────►
     │   grant_type=client_credentials
     │   client_assertion=<signed JWT>
+    │   scope=system/Patient.read system/DiagnosticReport.read ...
     │
     │              Epic fetches /.well-known/jwks.json ◄─────┤
     │              Epic verifies JWT signature               │
@@ -130,7 +169,10 @@ Edit `.env` with your values (see [Configuration Reference](#configuration-refer
 1. Go to [fhir.epic.com](https://fhir.epic.com) → Sign in → **Build Apps** → **Create**
 2. Choose **Backend Systems** app type
 3. Select SMART version: **SMART v2**
-4. Add authorized APIs: `Patient.read (System)` + `DiagnosticReport.read (System)`
+4. Add authorized APIs:
+   - `Patient.read (System)`
+   - `DiagnosticReport.read (System)`
+   - `Group.read (System)` ← required for bulk export
 5. Under **Non-Production JWK Set URL** — paste your public JWKS URL (see options below)
 6. Copy the **Non-Production Client ID** → paste into `.env` as `EPIC_CLIENT_ID`
 
@@ -151,10 +193,14 @@ The JWKS endpoint must be publicly reachable so Epic can verify your JWT. VS Cod
 ### Step 1 — Start the DevTunnel
 
 1. Open VS Code
-2. Open the **Ports** panel (bottom status bar → **Ports** tab, or `Ctrl+Shift+P` → "Focus on Ports View")
+2. Open the **Ports** panel:
+   - Bottom status bar → **Ports** tab, or
+   - `Ctrl+Shift+P` → "Focus on Ports View"
 3. Click **Forward a Port** → enter `8080`
 4. Right-click the forwarded port → **Port Visibility** → set to **Public**
 5. Copy the generated URL — it looks like `https://xxxx-8080.euw.devtunnels.ms`
+
+> **Important:** Port visibility must be **Public** or Epic cannot reach the JWKS endpoint.
 
 ### Step 2 — Update `.env`
 
@@ -164,7 +210,7 @@ EPIC_JWKS_URL=https://xxxx-8080.euw.devtunnels.ms/.well-known/jwks.json
 
 ### Step 3 — Update the Epic portal
 
-Paste the new JWKS URL into the **Non-Production JWK Set URL** field of your app in the Epic portal and save. Epic will use this URL from that point forward.
+Paste the new JWKS URL into the **Non-Production JWK Set URL** field of your app and save. Epic reads this URL from the portal when verifying tokens.
 
 ### Step 4 — Run
 
@@ -172,23 +218,20 @@ Paste the new JWKS URL into the **Non-Production JWK Set URL** field of your app
 go run .
 ```
 
-You will see:
-```
-Config loaded ✓
-JWKS server listening on :8080 ✓
-JWT:
-eyJhbGci...
+### Step 5 — Override the scheduler for testing
 
-2026/03/27 21:48:57 JWKS HIT: GET /.well-known/jwks.json — User-Agent: Epic-Interconnect/117.0...
-Access token ✓  eyJhbGciOiJSUzI1NiIs...
-Bulk export started — polling https://...
-....
-Patients ✓  found 7
-  [abc123] Doe, John  MRN:1234
-  ...
+Instead of waiting 24 hours, set the interval to 1 minute:
+
+```bash
+SCHEDULER_INTERVAL=1m go run .
 ```
 
-> If you restart VS Code the DevTunnel URL may change. If it does, update both `.env` and the Epic portal registration.
+Or add it to `.env` temporarily:
+```env
+SCHEDULER_INTERVAL=1m
+```
+
+> **DevTunnel URL changes on VS Code restart.** If you restart VS Code, repeat Steps 1–3 with the new URL.
 
 ---
 
@@ -210,7 +253,7 @@ SCHEDULER_INTERVAL=1m docker compose up --build
 
 ## Deploying to Google Cloud Run
 
-Cloud Run gives you a **permanent public HTTPS URL** — ideal for registering in the Epic portal once and never changing it.
+Cloud Run gives you a **permanent public HTTPS URL** — ideal for registering in the Epic portal once and never changing it. No more DevTunnel URL changes.
 
 ### Step 1 — Project setup (one-time)
 
@@ -220,6 +263,8 @@ gcloud config set project epic-lab-reporter-2026
 ```
 
 ### Step 2 — Store RSA keys in Secret Manager
+
+Keys must never be baked into the Docker image. Store them in Google Secret Manager and mount them at runtime.
 
 ```bash
 gcloud secrets create epic-private-key \
@@ -231,7 +276,7 @@ gcloud secrets create epic-public-key \
   --project=epic-lab-reporter-2026
 ```
 
-Grant the default compute service account access to the secrets:
+Grant the default compute service account access to read the secrets:
 
 ```bash
 PROJECT_NUMBER=$(gcloud projects describe epic-lab-reporter-2026 --format="value(projectNumber)")
@@ -250,10 +295,10 @@ gcloud artifacts repositories create lab-reporter \
   --location=us-central1 \
   --project=epic-lab-reporter-2026
 
-# Authenticate Docker
+# Authenticate Docker to push images
 gcloud auth configure-docker us-central1-docker.pkg.dev
 
-# Build and push
+# Build and push via Cloud Build
 gcloud builds submit \
   --tag us-central1-docker.pkg.dev/epic-lab-reporter-2026/lab-reporter/app \
   --project=epic-lab-reporter-2026
@@ -287,7 +332,7 @@ SMTP_FROM=Epic Lab Reporter <your@gmail.com>" \
   --project=epic-lab-reporter-2026
 ```
 
-Cloud Run outputs a URL like `https://epic-lab-reporter-xxxx-uc.a.run.app`.
+Cloud Run outputs a permanent URL: `https://epic-lab-reporter-xxxx-uc.a.run.app`
 
 ### Step 5 — Verify the JWKS endpoint
 
@@ -295,14 +340,27 @@ Cloud Run outputs a URL like `https://epic-lab-reporter-xxxx-uc.a.run.app`.
 curl https://epic-lab-reporter-xxxx-uc.a.run.app/.well-known/jwks.json
 ```
 
-Expected response:
+Expected:
 ```json
 {"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"...","n":"...","e":"AQAB"}]}
 ```
 
-### Step 6 — Register in Epic portal
+### Step 6 — Register permanent URL in Epic portal
 
 Paste `https://epic-lab-reporter-xxxx-uc.a.run.app/.well-known/jwks.json` into the **Non-Production JWK Set URL** field and save. Update `EPIC_JWKS_URL` in Cloud Run env vars to match.
+
+> **Advantage over DevTunnel:** The Cloud Run URL never changes. Register it once in the Epic portal and forget it.
+
+---
+
+## Local vs Cloud Run: Which to Use?
+
+| Scenario | Recommended |
+|----------|-------------|
+| First-time setup, debugging auth | **Local + VS Code DevTunnel** |
+| Stable development, sharing with team | **Cloud Run** |
+| Production | **Cloud Run** |
+| Running tests without 24h wait | Either — set `SCHEDULER_INTERVAL=1m` |
 
 ---
 
@@ -334,18 +392,27 @@ Paste `https://epic-lab-reporter-xxxx-uc.a.run.app/.well-known/jwks.json` into t
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `ECFRequestCount:0` in response headers | Epic not fetching JWKS | Ensure `jku` header is in the JWT and the URL is reachable |
+| `ECFRequestCount:0` in response headers | Epic not fetching JWKS | Ensure `jku` header is in the JWT and the URL is publicly reachable |
 | `DBTime:0` | Epic not hitting its DB at all | Wrong `client_id` or wrong token URL |
 | Works once, fails later | JWKS URL changed (DevTunnel restarted) | Update `.env` + Epic portal with new URL |
 | Works locally, fails on Cloud Run | Keys not mounted | Verify Secret Manager mounts with `gcloud run services describe` |
 
-### JWKS endpoint returns 404
+### JWKS endpoint returns nothing / connection refused
 
-The DevTunnel is not running or port visibility is set to **Private**. In VS Code Ports panel, confirm the port is listed and visibility is **Public**.
+The DevTunnel is not running or the port is set to **Private**. In VS Code Ports panel, confirm:
+- Port `8080` is listed
+- Visibility is **Public** (not Private)
+- `go run .` is running locally
+
+### `$export` returns 404 (Group not found)
+
+- Verify `EPIC_GROUP_ID` in `.env` is correct
+- Ensure `Group.read (System)` API is added in the Epic portal app registration
+- Confirm the app has `system/Group.read` in its registered scopes
 
 ### Patients ✓ found 0
 
-The FHIR Group ID is wrong or the `system/Patient.read` scope was not granted. Confirm `EPIC_GROUP_ID` in `.env` matches the Group in the Epic portal.
+The bulk export completed but returned no patients. The FHIR Group may be empty or the scope does not cover patient resources.
 
 ### Email not received
 
