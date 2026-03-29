@@ -80,7 +80,7 @@ func (tc *TokenClient) fetchToken() (string, int, error) {
 	form.Set("client_assertion", assertion)
 	// Request only the scopes the app is registered for in the Epic portal.
 	// system/Group.read is required for the Group/$export bulk data endpoint.
-	form.Set("scope", "system/Patient.read system/DiagnosticReport.read system/Group.read")
+	form.Set("scope", "system/Patient.read system/DiagnosticReport.read system/Group.read system/Observation.read")
 
 	resp, err := http.PostForm(tc.cfg.EpicTokenURL, form)
 	if err != nil {

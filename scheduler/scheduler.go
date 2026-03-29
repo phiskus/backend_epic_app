@@ -16,19 +16,19 @@ import (
 // It blocks forever — call it in a goroutine if you need the main thread free.
 func Run(cfg *config.Config, tc *auth.TokenClient) {
 	// Fire immediately on startup so you don't wait 24h for the first report.
-	runOnce(cfg, tc)
+	RunOnce(cfg, tc)
 
 	ticker := time.NewTicker(cfg.SchedulerInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runOnce(cfg, tc)
+		RunOnce(cfg, tc)
 	}
 }
 
-// runOnce fetches patients, fetches their labs, renders HTML and sends the email.
+// RunOnce fetches patients, fetches their labs, renders HTML and sends the email.
 // Errors are logged but do not crash the service — the next tick will retry.
-func runOnce(cfg *config.Config, tc *auth.TokenClient) {
+func RunOnce(cfg *config.Config, tc *auth.TokenClient) {
 	start := time.Now()
 	log.Println("── scheduler: starting report run ──")
 

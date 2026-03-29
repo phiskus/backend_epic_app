@@ -76,3 +76,9 @@ curl -v -X POST https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials&client_assertion_type=urn%3Aietf%3Aparams%3Aoauth%3Aclient-assertion-type%3Ajwt-bearer&client_assertion=eyJhbGciOiJSUzI1NiIsImtpZCI6Im92S1BKbXk5aGlTaFBSaWcyUzgzVDAwTUhhamF5YUxlS1RPRmZtRDE5dXMiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOiJodHRwczovL2ZoaXIuZXBpYy5jb20vaW50ZXJjb25uZWN0LWZoaXItb2F1dGgvb2F1dGgyL3Rva2VuIiwiZXhwIjoxNzc0NjM2MTY2LCJpYXQiOjE3NzQ2MzU4NjYsImlzcyI6ImYxMTNmNDA3MS1mMmY3LTRjNzktYTI4ZC1mZDg4MjM0NDRmN2MiLCJqdGkiOiIxOGEwYzVlYjEzNzE1N2M4Iiwic3ViIjoiZjExM2Y0MDcxLWYyZjctNGM3OS1hMjhkLWZkODgyMzQ0NGY3YyJ9.NJQ77fIqZ0cgy1U5m1V0l6GJlRd243jCyXIUND8TbZIciE23XJth_T_dqmDEzL5Kd9Zq0hhXdaQGdW7oXs5YU9dSBFu56p6s25gSPD9EOwIiPSMd6C40Ki66nXNbSxAPhK49fQjZ2eMUVvBhnCCVqHjVWPNapv77PzbQrKUup5JD51SPfguXHB7cqwdp7HdqwsOYTjLnM1WkI52GApXLYAOIAChOaC2cNDk-cXkKXSupWdVIKZA-IiVeVFPaDxxSdKce4RWwr-mSOVKhYzugt54qaRkO3AnULIrjdI7-CnfbX7yXkw6gNR86Dxjhcb89emh4q4k5YNGl9X34E1mKxg&scope=system%2FPatient.read+system%2FDiagnosticReport.read"
 
+
+
+echo -n "lkqc thuo bajb dupg" | gcloud secrets versions add smtp-pass \
+  --data-file=- \
+  --project=epic-lab-reporter-2026
+

@@ -154,7 +154,7 @@ func SimulateHighHbA1c(labMap map[string][]LabResult) {
 		for i, l := range labs {
 			if strings.Contains(strings.ToLower(l.TestName), "a1c") ||
 				strings.Contains(strings.ToLower(l.TestName), "hemoglobin a1c") {
-				labs[i].Value = "9.2 %"
+				labs[i].Value = "9.2 "
 				labs[i].RangeLow = "4.0"
 				labs[i].RangeHigh = "5.6"
 				labs[i].Interpretation = "H"

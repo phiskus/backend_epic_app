@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"net/http"
-	"time"
+	
+	"os"
+	"fmt"
 
 	"epic_lab_reporter/auth"
 	"epic_lab_reporter/config"
@@ -18,6 +20,15 @@ func main() {
 	}
 	log.Println("config loaded ✓")
 
+	tokenClient := auth.NewTokenClient(cfg)
+
+	if _, err := tokenClient.GetToken(); err != nil {
+	log.Fatalf("initial token fetch failed: %v", err)
+	}
+	log.Println("access token ✓")
+
+
+
 	// Start the JWKS HTTP server so Epic can verify JWT signatures.
 	// Must be running before the first token request.
 	jwksHandler, err := jwks.Handler(cfg.EpicPublicKeyPath)
@@ -29,25 +40,28 @@ func main() {
 		log.Printf("JWKS request: %s %s — %s", r.Method, r.URL.String(), r.Header.Get("User-Agent"))
 		jwksHandler(w, r)
 	})
-	go func() {
-		if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
-			log.Fatalf("http server: %v", err)
+		// /run is called by Cloud Scheduler every 24h.
+		// Locally, trigger it manually: curl -X POST http://localhost:8080/run
+	mux.HandleFunc("/run", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
 		}
-	}()
-	time.Sleep(200 * time.Millisecond)
-	log.Printf("JWKS server listening on :%s ✓", cfg.Port)
+		secret := os.Getenv("RUN_SECRET")
+		if secret != "" && r.Header.Get("Authorization") != "Bearer "+secret {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		go scheduler.RunOnce(cfg, tokenClient)
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprintln(w, "report run started")
+	})
 
-	// Token client — shared across all FHIR calls, handles caching + refresh.
-	tokenClient := auth.NewTokenClient(cfg)
-
-	// Warm up: verify we can get a token before entering the scheduler loop.
-	if _, err := tokenClient.GetToken(); err != nil {
-		log.Fatalf("initial token fetch failed: %v\n"+
-			"Check EPIC_JWKS_URL is publicly reachable and matches the Epic portal registration.", err)
+	log.Printf("server ready on :%s ✓", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil {
+		log.Fatalf("http server: %v", err)
 	}
-	log.Println("access token ✓")
 
-	// Run the report job now, then every cfg.SchedulerInterval (default 24h).
-	log.Printf("scheduler starting — interval: %s", cfg.SchedulerInterval)
-	scheduler.Run(cfg, tokenClient) // blocks forever
+
+		
 }
